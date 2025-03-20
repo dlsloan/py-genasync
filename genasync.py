@@ -16,6 +16,42 @@ class _Tasks:
     def add(self, task):
         self.tasks.append(task)
 
+    def _yield_step(self): #??
+        ran = 0
+        disabled = 0
+        for task in list(self.tasks):
+            if task._active.value:
+                continue
+            if not task._enabled:
+                disabled += 1
+                continue
+            with task._active:
+                dly = task._step()
+                ran += 1
+            if task.is_done:
+                self.tasks.remove(task)
+            elif dly is not None:
+                with self._cv:
+                    def on_notify(dly, task):
+                        if dly.is_ready:
+                            with self._cv:
+                                task._enabled = True
+                                self._cv.notify()
+                    dly.set_notify(task, on_notify)
+                    task._enabled = False
+            yield
+        if ran == 0 and disabled > 0:
+            with self._cv:
+                has_en = False
+                while has_en:
+                    for task in self.tasks:
+                        if not task._active.value and task._enabled:
+                            has_en = True
+                    if not has_en:
+                        self._cv.wait()
+
+
+
     def step(self):
         assert len(self.tasks) > 0
 
